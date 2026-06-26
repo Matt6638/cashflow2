@@ -432,12 +432,27 @@
       <div class="card-body">
         <p style="font-size:12px;color:var(--ink-faint);margin-bottom:12px;">全月のデータをエクスポートして、別の端末でインポートすると同期できます。</p>
 
-        <button class="sync-btn export-btn" onclick="exportData()">📤　データをコピー（エクスポート）</button>
+        <button class="sync-btn export-btn" onclick="exportData()">📤　データを出力（エクスポート）</button>
 
-        <div style="margin-top:10px;">
-          <div style="font-size:11px;color:var(--ink-faint);margin-bottom:6px;">別端末からコピーしたデータを貼り付け：</div>
-          <textarea id="importText" class="import-area" placeholder="ここにデータを貼り付けてください…"></textarea>
-          <button class="sync-btn import-btn" onclick="importData()" style="margin-top:8px;">📥　貼り付けて取り込む（インポート）</button>
+        <!-- バックアップ手順ガイド -->
+        <div id="backupGuide" style="display:none;margin-top:12px;padding:12px;background:var(--yellow-soft);border:1px solid #f0dfa0;border-radius:8px;">
+          <div style="font-size:12px;font-weight:700;color:var(--yellow);margin-bottom:8px;">📋 バックアップ手順</div>
+          <div style="font-size:12px;color:var(--ink);line-height:1.8;">
+            ① 下の「メモアプリへコピー」をタップ<br>
+            ② メモアプリが開いたら新規メモに貼り付け<br>
+            ③ 「キャッシュフローバックアップ」などの名前で保存
+          </div>
+          <button class="sync-btn" onclick="openNoteApp()"
+            style="margin-top:10px;background:#b8860b;color:white;">
+            📝　メモアプリへコピー
+          </button>
+        </div>
+
+        <textarea id="importText" class="import-area" placeholder="エクスポートしたデータがここに表示されます…" style="margin-top:10px;"></textarea>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+          <div style="font-size:11px;color:var(--ink-faint);margin-bottom:6px;">別端末・復元時：メモのデータを貼り付けてインポート</div>
+          <button class="sync-btn import-btn" onclick="importData()">📥　貼り付けて取り込む（インポート）</button>
         </div>
         <div id="syncMsg" class="sync-msg"></div>
       </div>
@@ -560,8 +575,18 @@ function lsKey(m, id) { return `cf8_m${m}_${id}`; }
 function lsGet(m, id, def='') { const v = localStorage.getItem(lsKey(m,id)); return v !== null ? v : String(def); }
 function lsSet(m, id, val)    { localStorage.setItem(lsKey(m,id), val); }
 
+// ── Actual Transfer Save ──
+function saveActualTransfer(key, val) {
+  const num = parseComma(val);
+  if (num > 0) {
+    localStorage.setItem(key, String(num));
+  } else {
+    localStorage.removeItem(key);
+  }
+}
+
 // ── Export / Import ──
-function exportData() {
+function exportData(fromSave) {
   const data = {};
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
@@ -569,19 +594,48 @@ function exportData() {
       data[k] = localStorage.getItem(k);
     }
   }
+  const now = new Date();
+  const ts = now.getFullYear() + '/' +
+    String(now.getMonth()+1).padStart(2,'0') + '/' +
+    String(now.getDate()).padStart(2,'0') + ' ' +
+    String(now.getHours()).padStart(2,'0') + ':' +
+    String(now.getMinutes()).padStart(2,'0');
+  data['_exportedAt'] = ts;
   const json = JSON.stringify(data);
-  // Copy to clipboard
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(json).then(() => {
-      showSyncMsg('✓ クリップボードにコピーしました。別端末で貼り付けてインポートしてください。', 'ok');
-    }).catch(() => {
-      // Fallback: show in textarea
-      document.getElementById('importText').value = json;
-      showSyncMsg('クリップボードへのコピーに失敗しました。上のテキストエリアの内容をコピーしてください。', 'err');
-    });
-  } else {
-    document.getElementById('importText').value = json;
-    showSyncMsg('上のテキストエリアに出力しました。全選択してコピーしてください。', 'ok');
+
+  // テキストエリアに出力
+  const ta = document.getElementById('importText');
+  ta.value = json;
+
+  // バックアップ案内エリアを表示
+  const backupArea = document.getElementById('backupGuide');
+  if (backupArea) backupArea.style.display = 'block';
+
+  if (!fromSave) {
+    showSyncMsg('✓ データを出力しました。下の手順でメモアプリに保存してください。', 'ok');
+  }
+}
+
+function openNoteApp() {
+  // テキストエリアの内容を取得
+  const ta = document.getElementById('importText');
+  const text = ta.value;
+  if (!text) { exportData(); return; }
+  // iOSメモアプリをURLスキームで開く（テキストをクリップボード経由で）
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        showSyncMsg('✓ クリップボードにコピーしました！メモアプリを開いて貼り付けてください。', 'ok');
+        // メモアプリを開く
+        setTimeout(() => { window.location.href = 'mobilenotes://'; }, 800);
+      }).catch(() => {
+        showSyncMsg('下のテキストを長押し→全選択→コピーしてメモアプリに貼り付けてください。', 'err');
+      });
+    } else {
+      showSyncMsg('下のテキストを長押し→全選択→コピーしてメモアプリに貼り付けてください。', 'ok');
+    }
+  } catch(e) {
+    showSyncMsg('下のテキストを長押し→全選択→コピーしてメモアプリに貼り付けてください。', 'ok');
   }
 }
 
@@ -822,13 +876,32 @@ function recalc() {
     }
   });
 
+  // 資金移動の実績額を口座ごとに集計
+  const transferIn  = {};  // 受取口座への入金
+  const transferOut = {};  // 送出口座からの出金
+  // LocalStorageからtransfer_actualキーを走査
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k || !k.startsWith(`cf8_m${currentMonth}_transfer_actual_`)) continue;
+    const parts = k.replace(`cf8_m${currentMonth}_transfer_actual_`, '').split('_');
+    if (parts.length < 2) continue;
+    const fromId = parts[0];
+    const toId   = parts[1];
+    const amt    = parseComma(localStorage.getItem(k) || '0');
+    if (amt <= 0) continue;
+    transferOut[fromId] = (transferOut[fromId] || 0) + amt;
+    transferIn[toId]    = (transferIn[toId]    || 0) + amt;
+  }
+
   // 口座
   let bankStart = 0, bankEnd = 0;
   BANKS.forEach(b => {
     const s = gn('bs_'+b.id);
     const d = gn('bd_'+b.id);
     const autoD = bankAutoDeduct[b.id] || 0;
-    const e = s - d - autoD;
+    const tOut  = transferOut[b.id] || 0;
+    const tIn   = transferIn[b.id]  || 0;
+    const e = s - d - autoD - tOut + tIn;
     bankStart += s;
     bankEnd   += e;
     const el = document.getElementById('be_'+b.id);
@@ -976,7 +1049,12 @@ function renderTransfer() {
     ng.innerHTML = '⚠️ 不足を補える余剰口座がありません。入金・追加資金が必要です。';
     sec.appendChild(ng);
   } else {
-    suggestions.forEach(s => {
+    suggestions.forEach((s, idx) => {
+      const actualKey = `cf8_m${currentMonth}_transfer_actual_${s.from.id}_${s.to.id}`;
+      const actualVal = localStorage.getItem(actualKey) || '';
+      const actualNum = actualVal ? parseComma(actualVal) : Math.ceil(s.amount);
+      const afterBalance = Math.ceil(s.to.end + actualNum);
+
       const div = document.createElement('div');
       div.className = 'transfer-item';
       div.innerHTML = `
@@ -989,8 +1067,21 @@ function renderTransfer() {
           <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${s.to.color}"></span>
           ${s.to.label}
         </span>
-        <span class="t-amount">¥${Math.ceil(s.amount).toLocaleString('ja-JP')}</span>
-        <span class="t-note">移動後の${s.to.label}残高（試算）：¥${Math.ceil(s.to.end + s.amount).toLocaleString('ja-JP')}</span>`;
+        <div style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+          <span style="font-size:10px;color:var(--ink-faint);">提案</span>
+          <span class="t-amount" style="font-size:13px;">¥${Math.ceil(s.amount).toLocaleString('ja-JP')}</span>
+        </div>
+        <div style="width:100%;display:flex;align-items:center;gap:8px;margin-top:6px;padding-top:6px;border-top:1px solid #dde1ec;">
+          <span style="font-size:11px;color:var(--ink-faint);white-space:nowrap;">実際の振込額</span>
+          <input class="amt-input" type="text" 
+            id="ta_${s.from.id}_${s.to.id}"
+            value="${actualVal ? Number(actualVal).toLocaleString('ja-JP') : ''}"
+            placeholder="${Math.ceil(s.amount).toLocaleString('ja-JP')}"
+            style="width:120px;font-size:13px;margin-left:auto;"
+            oninput="saveActualTransfer('${actualKey}', this.value); recalc();">
+          <span style="font-size:12px;color:var(--ink-faint);">円</span>
+        </div>
+        <span class="t-note">移動後の${s.to.label}残高（試算）：¥${afterBalance.toLocaleString('ja-JP')}</span>`;
       sec.appendChild(div);
     });
   }
@@ -1159,6 +1250,10 @@ function saveData() {
     String(now.getMinutes()).padStart(2,'0');
   lsSet(currentMonth, 'savedAt', ts);
   updateLastSavedLabel();
+
+  // 保存と同時にエクスポートデータを生成してテキストエリアに表示
+  exportData(true);
+
   const t = document.getElementById('toast');
   t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'), 2000);
